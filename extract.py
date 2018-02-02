@@ -12,7 +12,7 @@ csvPath = "SBA_Loan_data_.csv"
 s = pd.read_csv(csvPath,dtype={'ThirdPartyLender_Name': str,'ThirdPartyLender_City':str,\
 'ThirdPartyLender_State':'category','BorrState':'category','BorrZip':'category','CDC_State':'category', \
 'CDC_Zip':'category','subpgmdesc':'category','NaicsCode':str,'ProjectState':'category','BusinessType':'category', \
-'LoanStatus':'category','ChargeOffDate':str,'ApprovalDate':str},parse_dates=['ApprovalDate','ChargeOffDate'])
+'LoanStatus':'category','ChargeOffDate':str,'ApprovalDate':str},parse_dates=['ApprovalDate','ChargeOffDate'],nrows=100)
 
 
 # Filter loans that are cancelled, missing, or exempt. Also dropping laons that are approved after 2014 per Piazza post.
@@ -146,9 +146,15 @@ while(True):
 t = pd.concat(framesToStack,axis=0)
 
 # Drop useless Data - don't currently see the need for it.
-t = t.drop(columns=['ApprovalDate','ApprovalFiscalYear','NaicsCode','Program','BorrName','BorrStreet','BorrCity','CDC_Name',\
+t = t.drop(columns=['index','CurrentLength','ApprovalDate','ApprovalFiscalYear',\
+'GrossChargeOffAmount','LoanStatus','NaicsCode','Program','BorrName','BorrStreet','BorrCity','CDC_Name',\
 'CDC_Street','CDC_City','ThirdPartyLender_Name','ThirdPartyLender_City','InitialInterestRate','NaicsDescription','DeliveryMethod',\
 'ProjectCounty'])
+
+#change default type to category
+t.Default = t.Default.astype('category')
+
+ # Write output types to csv
 
 # Create Test Set and Training/Validation Set
 testSet = t[t['Start_Date'] >= datetime.datetime(2011,1,1)]
