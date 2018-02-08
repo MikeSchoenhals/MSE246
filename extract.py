@@ -8,29 +8,39 @@ from dateutil.relativedelta import relativedelta
 import math
 from collections import defaultdict
 pd.options.display.max_rows = 30
+
+END_DATE = datetime.datetime(2014,1,1)
+
 csvPath = "SBA_Loan_data_.csv"
 s = pd.read_csv(csvPath,dtype={'ThirdPartyLender_Name': str,'ThirdPartyLender_City':str,\
 'ThirdPartyLender_State':'category','BorrState':'category','BorrZip':'category','CDC_State':'category', \
 'CDC_Zip':'category','subpgmdesc':'category','NaicsCode':str,'ProjectState':'category','BusinessType':'category', \
-'LoanStatus':'category','ChargeOffDate':str,'ApprovalDate':str},parse_dates=['ApprovalDate','ChargeOffDate'],nrows=100)
+'LoanStatus':'category','ChargeOffDate':str,'ApprovalDate':str},parse_dates=['ApprovalDate','ChargeOffDate'])
 
 
 # Filter loans that are cancelled, missing, or exempt. Also dropping laons that are approved after 2014 per Piazza post.
 s = s[((s.LoanStatus == 'PIF') | (s.LoanStatus == 'CHGOFF')) & (s.ApprovalDate < datetime.datetime(2014,1,1))]
 
 # Get number of years loan has survived - rounded to closest year.
-SECONDS_PER_YEAR = 31536000.0
-END_DATE = datetime.datetime(2014,1,1)
-def lengthOfLoan(row):
-    if row.LoanStatus == 'CHGOFF':
-        return int(math.ceil((row['ChargeOffDate']- row['ApprovalDate']).total_seconds()/SECONDS_PER_YEAR))
-    else:
-        return int(round((END_DATE - row['ApprovalDate']).total_seconds()/SECONDS_PER_YEAR))
+# SECONDS_PER_YEAR = 31536000.0
+#
+# def lengthOfLoan(row):
+#     if row.LoanStatus == 'CHGOFF':
+#         return int(math.ceil((row['ChargeOffDate']- row['ApprovalDate']).total_seconds()/SECONDS_PER_YEAR))
+#     else:
+#         return int(round((END_DATE - row['ApprovalDate']).total_seconds()/SECONDS_PER_YEAR))
 
-s['CurrentLength'] =  s.apply(lengthOfLoan,axis=1)
+def lengthOfLoan2(row):
+    if row.LoanStatus == 'CHGOFF':
+        return row['ChargeOffDate']- row['ApprovalDate']
+    else:
+        return END_DATE - row['ApprovalDate']
+
+s['CurrentLength'] =  s.apply(lengthOfLoan2,axis=1)
+
 
 # Filter records that have 0 years exposure
-s = s[s.CurrentLength > 0]
+# s = s[s.CurrentLength > 0]
 
 # Create categorical Variable for Mortgage term length
 MLengthlables = {0:'12Months or Less',1:'12To24Months',2:'24MonthsTo5Years',3:'5YearsTo10Years',4:'10YearsTo20Years',5:'MoreThan20Years'}
@@ -102,9 +112,11 @@ adj_close = SP500['Adj Close']
 every_day = pd.date_range(start=start_date, end=end_date, freq='D')
 adj_close = adj_close.reindex(every_day)
 adj_close = adj_close.fillna(method='ffill')
-adj_close = adj_close.pct_change(freq=DateOffset(months=12))
-adj_close_rolling = adj_close.rolling(window=100).mean()
 adj_close=adj_close.to_frame()
+adj_close_return = adj_close.pct_change(freq=DateOffset(months=12))
+adj_close = pd.merge(adj_close,adj_close_return,left_index=True,right_index=True,how='left')
+adj_close = adj_close.rename(columns={'Adj Close_x':'SPIndex','Adj Close_y':'SPAnnualReturn'})
+adj_close_rolling = adj_close.rolling(window=100).mean()
 adj_close = adj_close.reset_index()
 adj_close["year"] = adj_close.apply(lambda row: row['index'].year,axis=1)
 adj_close["month"] = adj_close.apply(lambda row: row['index'].month,axis=1)
@@ -116,14 +128,60 @@ unemp.index = unemp.index.rename(['year','month'])
 unemp = unemp.reset_index()
 unemp.columns = pd.Index(['year', 'month', 'unemp_rate'], dtype='object')
 
+# read in inflation Rates - NOT CURRENTLY USED
+# infl = pd.read_csv('Inflation.csv',sep=r",",header=None,index_col=0)
+# infl = infl.unstack().swaplevel()
+# infl.index = infl.index.rename(['year','month'])
+# infl = infl.sort_index(level=0,sort_remaining=False)
+# infl = infl.reset_index()
+# infl.columns = pd.Index(['year', 'month', 'infl_rate'], dtype='object')
+# infl['infl_factor'] = 0
+# for i,x in infl.iterrows():
+#     if i == 0:
+#         infl['infl_factor'].iloc[i] = 1.0
+#     else:
+#         infl['infl_factor'].iloc[i] = infl['infl_factor'].iloc[i-1] *  ((1+infl['infl_rate'].iloc[i]/100) ** (1.0/12.0))
+
+
+
+state_HPIndex = pd.read_csv('HPI_AT_state.csv',sep=r",",names=['State','Year','Quarter','hpi'])
+state_HPIndex['Month'] = state_HPIndex.apply(lambda l: l['Quarter']*3,axis=1)
+state_HPIndex['Date'] = state_HPIndex.apply(lambda l: datetime.date(int(l['Year']),int(l['Month']),1),axis=1)
+end_date = '2014-01-01'
+start_date = '1990-01-01'
+state_HPIndex = state_HPIndex.set_index(['State','Date'])
+every_month = pd.date_range(start=start_date, end=end_date, freq='D')
+multi_index = pd.MultiIndex.from_product([state_HPIndex.index.levels[0],every_month])
+state_HPIndex = state_HPIndex.reindex(multi_index)
+state_HPIndex = state_HPIndex.drop(columns=['Year','Quarter','Month'])
+state_HPIndex.index = state_HPIndex.index.rename(['State','Date'])
+state_HPIndex['hpi'] = pd.to_numeric(state_HPIndex['hpi'], errors='coerce')
+state_HPIndex = state_HPIndex.unstack(level=0)
+state_HPIndex = state_HPIndex.interpolate(method='spline',order=3)
+state_HPIndex = state_HPIndex.fillna(method='backfill')
+state_HPIndex = state_HPIndex.stack(dropna=False)
+state_HPIndex = state_HPIndex.unstack(level=0)
+state_HPIndex = state_HPIndex.fillna(state_HPIndex.mean())
+state_HPIndex = state_HPIndex.stack(dropna=False)
+state_HPIndex = state_HPIndex.reset_index(level=['Date','State'])
+# state_HPIndex.to_csv("hpitest.csv",index=False)
+
+
 # combine all TS into one dataframe
 combine = pd.merge(adj_close,unemp,left_on=['year','month'],right_on=['year','month'],how='left')
-combine = combine.drop(columns=['year','month'])
+
+# join state_HPrice to combine
+combine = pd.merge(state_HPIndex,combine,left_on=['Date'],right_on=['index'],how='left')
+combine = combine.drop(columns=['year','month','index'])
 
 #creatingMortageID - Useful for cox model when we may need to recombine
 s.index.rename('MortgageID',inplace=True)
 s.reset_index(inplace=True)
 
+# Drop useless columns before expanding records - save on RAM as much as possible
+s = s.drop(columns=['NaicsCode','Program','BorrName','BorrStreet','BorrCity','CDC_Name',\
+'CDC_Street','CDC_City','ThirdPartyLender_Name','ThirdPartyLender_City','InitialInterestRate','NaicsDescription','DeliveryMethod',\
+'ProjectCounty'])
 # Create multiple records from single record and join time dependent data
 framesToStack = []
 count = 0
@@ -134,31 +192,40 @@ def defaultMap(row):
     return 0
 
 while(True):
-    p = s[s.CurrentLength > count]
+    s['Start_Date'] = s.apply(lambda row: row['ApprovalDate'] + relativedelta(years=count),axis=1)
+    p = s[s.CurrentLength+s.ApprovalDate > s.Start_Date]
+    p['MortgageAge'] = count
     if len(p.index) == 0:
         break
-    p['Start_Date'] = p.apply(lambda row: row['ApprovalDate'] + relativedelta(years=count),axis=1)
-    p = pd.merge(p,combine,left_on='Start_Date',right_on='index',how='left')
+    p['End_Date'] = p.apply(lambda row: min(row['ApprovalDate'] + relativedelta(years=count+1),row['ApprovalDate'] + row['CurrentLength']),axis=1)
+    p = pd.merge(p,combine,left_on=['BorrState','Start_Date'],right_on=['State','Date'],how='left')
+    p = pd.merge(p,combine,left_on=['BorrState','ApprovalDate'],right_on=['State','Date'],how='left')
+    print('got here')
     p['Default'] = p.apply(defaultMap,axis=1)
     framesToStack.append(p)
     count = count+1
 
 t = pd.concat(framesToStack,axis=0)
 
-# Drop useless Data - don't currently see the need for it.
-t = t.drop(columns=['index','CurrentLength','ApprovalDate','ApprovalFiscalYear',\
-'GrossChargeOffAmount','LoanStatus','NaicsCode','Program','BorrName','BorrStreet','BorrCity','CDC_Name',\
-'CDC_Street','CDC_City','ThirdPartyLender_Name','ThirdPartyLender_City','InitialInterestRate','NaicsDescription','DeliveryMethod',\
-'ProjectCounty'])
+# Normalize S&P Index and HPI
+t['SPFactor'] = t.apply(lambda l: l['SPIndex_x']/l['SPIndex_y'],axis=1)
+t['SPAnnualReturn'] = t['SPAnnualReturn_x']
+t['hpiFactor'] = t.apply(lambda l: l['hpi_x']/l['hpi_y'],axis=1)
+t['unemp_rate'] = t['unemp_rate_x']
 
-#change default type to category
-t.Default = t.Default.astype('category')
+
+
+# Drop useless Data - don't currently see the need for it.
+t = t.drop(columns=['CurrentLength','ApprovalDate','ApprovalFiscalYear',\
+'GrossChargeOffAmount','LoanStatus','SPIndex_x','SPIndex_y','SPAnnualReturn_x',\
+'SPAnnualReturn_y','hpi_x','hpi_y','State_x','State_y','Date_x','Date_y','unemp_rate_x','unemp_rate_y'])
+
 
  # Write output types to csv
 
 # Create Test Set and Training/Validation Set
-testSet = t[t['Start_Date'] >= datetime.datetime(2011,1,1)]
-trainingSet = t[t['Start_Date'] < datetime.datetime(2011,1,1)]
+testSet = t[t['Start_Date'] >= datetime.datetime(2010,1,1)]
+trainingSet = t[t['Start_Date'] < datetime.datetime(2010,1,1)]
 print(len(testSet.index)/len(t.index))
 testSet.to_csv("test.csv",index=False)
 trainingSet.to_csv("training.csv",index=False)
