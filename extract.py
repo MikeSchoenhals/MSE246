@@ -103,18 +103,19 @@ def mapMissingValues(row,col_label):
 s["Missing_ThirdPartyDollars"] = s.apply(lambda row: mapMissingValues(row,'ThirdPartyDollars'),axis=1)
 
 
-
 # Get S&P 500 data - Loaded from spreadsheet. Data comes from yahoo finance.
-start_date = '1989-01-02'
+start_date = '1989-01-01'
 end_date = '2014-01-01'
 SP500 = pd.read_csv('GSPC.csv',index_col='Date',parse_dates=['Date'])
 adj_close = SP500['Adj Close']
 every_day = pd.date_range(start=start_date, end=end_date, freq='D')
 adj_close = adj_close.reindex(every_day)
+adj_close = adj_close.fillna(method='backfill')
 adj_close = adj_close.fillna(method='ffill')
 adj_close=adj_close.to_frame()
 adj_close_return = adj_close.pct_change(freq=DateOffset(months=12))
 adj_close = pd.merge(adj_close,adj_close_return,left_index=True,right_index=True,how='left')
+adj_close = adj_close.fillna(method='backfill')
 adj_close = adj_close.rename(columns={'Adj Close_x':'SPIndex','Adj Close_y':'SPAnnualReturn'})
 adj_close_rolling = adj_close.rolling(window=100).mean()
 adj_close = adj_close.reset_index()
@@ -142,8 +143,6 @@ unemp.columns = pd.Index(['year', 'month', 'unemp_rate'], dtype='object')
 #     else:
 #         infl['infl_factor'].iloc[i] = infl['infl_factor'].iloc[i-1] *  ((1+infl['infl_rate'].iloc[i]/100) ** (1.0/12.0))
 
-
-
 state_HPIndex = pd.read_csv('HPI_AT_state.csv',sep=r",",names=['State','Year','Quarter','hpi'])
 state_HPIndex['Month'] = state_HPIndex.apply(lambda l: l['Quarter']*3,axis=1)
 state_HPIndex['Date'] = state_HPIndex.apply(lambda l: datetime.date(int(l['Year']),int(l['Month']),1),axis=1)
@@ -167,14 +166,14 @@ state_HPIndex = state_HPIndex.reset_index(level=['Date','State'])
 # state_HPIndex.to_csv("hpitest.csv",index=False)
 
 
-# combine all TS into one dataframe
+# combine S&P and unemployment rates into one dataframe
 combine = pd.merge(adj_close,unemp,left_on=['year','month'],right_on=['year','month'],how='left')
 
-# join state_HPrice to combine
+# join state_HPIndex to combine
 combine = pd.merge(state_HPIndex,combine,left_on=['Date'],right_on=['index'],how='left')
 combine = combine.drop(columns=['year','month','index'])
 
-#creatingMortageID - Useful for cox model when we may need to recombine
+#creating MortageID - Useful for cox model when we may need to recombine
 s.index.rename('MortgageID',inplace=True)
 s.reset_index(inplace=True)
 
@@ -217,15 +216,15 @@ t['unemp_rate'] = t['unemp_rate_x']
 
 # Drop useless Data - don't currently see the need for it.
 t = t.drop(columns=['CurrentLength','ApprovalDate','ApprovalFiscalYear',\
-'GrossChargeOffAmount','LoanStatus','SPIndex_x','SPIndex_y','SPAnnualReturn_x',\
+'LoanStatus','SPIndex_x','SPIndex_y','SPAnnualReturn_x',\
 'SPAnnualReturn_y','hpi_x','hpi_y','State_x','State_y','Date_x','Date_y','unemp_rate_x','unemp_rate_y'])
 
 
  # Write output types to csv
 
 # Create Test Set and Training/Validation Set
-testSet = t[t['Start_Date'] >= datetime.datetime(2010,1,1)]
-trainingSet = t[t['Start_Date'] < datetime.datetime(2010,1,1)]
+testSet = t[t['Start_Date'] >= datetime.datetime(2010,6,1)]
+trainingSet = t[t['Start_Date'] < datetime.datetime(2010,6,1)]
 print(len(testSet.index)/len(t.index))
 testSet.to_csv("test.csv",index=False)
 trainingSet.to_csv("training.csv",index=False)
