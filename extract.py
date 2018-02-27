@@ -213,18 +213,18 @@ t['hpiFactor'] = t.apply(lambda l: l['hpi_x']/l['hpi_y'],axis=1)
 t['unemp_rate'] = t['unemp_rate_x']
 
 
-
 # Drop useless Data - don't currently see the need for it.
-t = t.drop(columns=['CurrentLength','ApprovalDate','ApprovalFiscalYear',\
+t = t.drop(columns=['CurrentLength','ApprovalFiscalYear',\
 'LoanStatus','SPIndex_x','SPIndex_y','SPAnnualReturn_x',\
 'SPAnnualReturn_y','hpi_x','hpi_y','State_x','State_y','Date_x','Date_y','unemp_rate_x','unemp_rate_y'])
 
-
+# Create Test Set and Training/Validation Set
+# testSet = t[t['ApprovalDate'] >= datetime.datetime(2008,1,1)]
+# trainingSet = t[t['ApprovalDate'] < datetime.datetime(2008,1,1)]
+# trainingSet = trainingSet[trainingSet['Start_Date'] < datetime.datetime(2008,1,1)]
  # Write output types to csv
 
-# Create Test Set and Training/Validation Set
-testSet = t[t['Start_Date'] >= datetime.datetime(2010,6,1)]
-trainingSet = t[t['Start_Date'] < datetime.datetime(2010,6,1)]
-print(len(testSet.index)/len(t.index))
-testSet.to_csv("test.csv",index=False)
-trainingSet.to_csv("training.csv",index=False)
+t.to_csv("allData.csv",index=False)
+# print(len(testSet.index)/len(t.index))
+# testSet.to_csv("test.csv",index=False)
+# trainingSet.to_csv("training.csv",index=False)
