@@ -161,3 +161,5 @@ clf.fit(allDataL1,y)
 # Simulation Starts Here
 # Use all_data_l1 for the data in the simulation. It has been properly formatted (mean-shifted and standardized).
 # clf.predict_proba(X) will get you the probability of default
+# featureNumToName3 will give you a dict for (column_number:column name), so you know what Variables
+# refer to which columns of the numpy array.
