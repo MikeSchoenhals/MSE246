@@ -42,7 +42,7 @@ cat_attribs = ['BorrState','CDC_State','ThirdPartyLender_State',\
 'NAICSIndustries','NAICSNationalIndustries','Missing_ThirdPartyDollars']#,'BorrZip']
 # Numerical Variables
 num_attribs = ['GrossApproval','TermInMonths','ThirdPartyDollars',\
-'MortgageAge','SPFactor','SPAnnualReturn','hpiFactor','unemp_rate']
+'MortgageAge','SPFactor','hpiFactor','unemp_rate']
 
 
 

@@ -32,7 +32,7 @@ s = s[((s.LoanStatus == 'PIF') | (s.LoanStatus == 'CHGOFF')) & (s.ApprovalDate <
 
 def lengthOfLoan2(row):
     if row.LoanStatus == 'CHGOFF':
-        return row['ChargeOffDate']- row['ApprovalDate']
+        return min(row['ChargeOffDate']- row['ApprovalDate'],END_DATE - row['ApprovalDate'])
     else:
         return END_DATE - row['ApprovalDate']
 
@@ -149,8 +149,8 @@ state_HPIndex['Date'] = state_HPIndex.apply(lambda l: datetime.date(int(l['Year'
 end_date = '2014-01-01'
 start_date = '1990-01-01'
 state_HPIndex = state_HPIndex.set_index(['State','Date'])
-every_month = pd.date_range(start=start_date, end=end_date, freq='D')
-multi_index = pd.MultiIndex.from_product([state_HPIndex.index.levels[0],every_month])
+every_d = pd.date_range(start=start_date, end=end_date, freq='D')
+multi_index = pd.MultiIndex.from_product([state_HPIndex.index.levels[0],every_d])
 state_HPIndex = state_HPIndex.reindex(multi_index)
 state_HPIndex = state_HPIndex.drop(columns=['Year','Quarter','Month'])
 state_HPIndex.index = state_HPIndex.index.rename(['State','Date'])
@@ -192,7 +192,7 @@ def defaultMap(row):
 
 while(True):
     s['Start_Date'] = s.apply(lambda row: row['ApprovalDate'] + relativedelta(years=count),axis=1)
-    p = s[s.CurrentLength+s.ApprovalDate > s.Start_Date]
+    p = s[s.CurrentLength + s.ApprovalDate > s.Start_Date]
     p['MortgageAge'] = count
     if len(p.index) == 0:
         break
