@@ -126,7 +126,7 @@ featureNumToName2 = dict([(i,x[1]) for i, x in enumerate(featureItemize)])
 allDataVarThreshold = selector_variance.transform(allData)
 
 # Perform l1 feature selection
-clf_l = linear_model.LogisticRegression(C=.07, penalty='l1', tol=1e-6,max_iter=500)
+clf_l = linear_model.LogisticRegression(C=.058, penalty='l1', tol=1e-6,max_iter=500)
 std_scaler = StandardScaler()
 allDataScaled = std_scaler.fit_transform(allDataVarThreshold.toarray())
 
@@ -155,7 +155,7 @@ all_data_scaled = std_scaler.transform(all_data_var.toarray())
 all_data_l1 = selector_l1.transform(all_data_scaled)
 
 # Fit model to training data. Note that the model will have better in-sample prediction than out-of-sample
-clf = linear_model.LogisticRegression(C=.07, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
+clf = linear_model.LogisticRegression(C=.058, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
 clf.fit(allDataL1,y)
 
 # Simulation Starts Here
