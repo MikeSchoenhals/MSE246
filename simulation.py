@@ -23,7 +23,8 @@ from sklearn.svm import l1_min_c
 from sklearn.model_selection import cross_val_score, StratifiedShuffleSplit
 from sklearn import metrics
 
-
+REG_PARAM = .0268
+VAR_THRESH = .00001
 pd.options.display.max_rows = 30
 csvPath = "alldata.csv"
 
@@ -39,7 +40,7 @@ len(sss.index)
 # Categorical Variables
 cat_attribs = ['BorrState','CDC_State','ThirdPartyLender_State',\
 'subpgmdesc','ProjectState','BusinessType','MortgageCatTerm','NIACLargesBusinessSector','NIACSubsector','NIACIndustryGroup',\
-'NAICSIndustries','NAICSNationalIndustries','Missing_ThirdPartyDollars']#,'BorrZip']
+'NAICSIndustries','NAICSNationalIndustries','Missing_ThirdPartyDollars','Missing_Unemp_Rate']#,'BorrZip']
 # Numerical Variables
 num_attribs = ['GrossApproval','TermInMonths','ThirdPartyDollars',\
 'MortgageAge','SPFactor','hpiFactor','unemp_rate']
@@ -114,7 +115,7 @@ y = sss[label].values
 y = y.flatten()
 
 # remove categorical variables with low variance
-selector_variance = VarianceThreshold(threshold=.0025)
+selector_variance = VarianceThreshold(threshold=VAR_THRESH)
 selector_variance.fit(allData)
 c = selector_variance.get_support(indices=False)
 d = selector_variance.get_support(indices=True)
@@ -126,11 +127,11 @@ featureNumToName2 = dict([(i,x[1]) for i, x in enumerate(featureItemize)])
 allDataVarThreshold = selector_variance.transform(allData)
 
 # Perform l1 feature selection
-clf_l = linear_model.LogisticRegression(C=.058, penalty='l1', tol=1e-6,max_iter=500)
-std_scaler = StandardScaler()
-allDataScaled = std_scaler.fit_transform(allDataVarThreshold.toarray())
+clf_l = linear_model.LogisticRegression(C=REG_PARAM, penalty='l1', tol=1e-6,max_iter=500)
+# std_scaler = StandardScaler()
+# allDataScaled = std_scaler.fit_transform(allDataVarThreshold.toarray())
 
-clf_l.fit(allDataScaled,y)
+clf_l.fit(allDataVarThreshold,y)
 
 selector_l1 = SelectFromModel(clf_l,prefit=True)
 c = selector_l1.get_support(indices=False)
@@ -140,7 +141,7 @@ featureItemize2 = featureNumToName2.items()
 featureItemize2 = [x for x,z in zip(featureItemize2,c) if (z == 1)]
 featureNumToName3 = dict([(i,x[1]) for i, x in enumerate(featureItemize2)])
 
-allDataL1 = selector_l1.transform(allDataScaled)
+allDataL1 = selector_l1.transform(allDataVarThreshold)
 
 # Process All  Data
 all_prepared_num = num_pipeline.transform(alldata)
@@ -151,15 +152,16 @@ data_test_numSparse = coo_matrix(all_prepared_num)
 all_data = hstack([all_prepared_num,all_cat_data])
 
 all_data_var = selector_variance.transform(all_data)
-all_data_scaled = std_scaler.transform(all_data_var.toarray())
-all_data_l1 = selector_l1.transform(all_data_scaled)
+# all_data_scaled = std_scaler.transform(all_data_var.toarray())
+all_data_l1 = selector_l1.transform(all_data_var)
 
 # Fit model to training data. Note that the model will have better in-sample prediction than out-of-sample
-clf = linear_model.LogisticRegression(C=.058, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
-clf.fit(allDataL1,y)
+clf = linear_model.LogisticRegression(C=REG_PARAM, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
+clf.fit(allDataVarThreshold,y)
 
 # Simulation Starts Here
-# Use all_data_l1 for the data in the simulation. It has been properly formatted (mean-shifted and standardized).
+# Use 'all_data' for the data in the simulation. It has been properly formatted (mean-shifted and standardized).
 # clf.predict_proba(X) will get you the probability of default
-# featureNumToName3 will give you a dict for (column_number:column name), so you know what Variables
+# featureNumToName2 will give you a dict for (column_number:column name), so you know what Variables
 # refer to which columns of the numpy array.
+# featureNumToName3 gives you the variables that will actually have non-zero coefficients in the L1 regression.
