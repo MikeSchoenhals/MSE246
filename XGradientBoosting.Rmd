@@ -1,0 +1,111 @@
+---
+title: "MS&E 246 - Financial Risk Analytics"
+author: "Arjun Parthipan"
+date: "March 8, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, cache = TRUE, message = FALSE, eval = TRUE)
+```
+
+
+```{r}
+library(ggrepel)
+library(knitr)
+library(plotROC)
+library(pROC)
+library(tidyverse)
+library(lubridate)
+library(caret)
+library(stringr)
+```
+
+```{r}
+train1 <- read.csv(file="training.csv", header=TRUE, sep=",")
+test1 <- read.csv(file="test.csv", header=TRUE, sep=",")
+```
+
+```{r}
+train1_sample <- sample_n(train1, 100000)
+test1_sample <- sample_n(train1, 10000)
+```
+
+#Data Preprocessing
+```{r}
+steps <- c("center", "scale")
+preProcess <- preProcess(train1_sample, method = steps)
+
+train1_sample1 <- predict(preProcess, train1_sample)
+```
+
+#Cross-validation
+```{r}
+
+set.seed(123)
+con <- trainControl(method = "cv", number = 10, summaryFunction = twoClassSummary, 
+                       selectionFunction = "oneSE", classProbs = TRUE)
+```
+# HyperParameter Tuning for Extreme Gradient Boosting
+```{r, eval = FALSE}
+hyperParameters <- expand.grid(.nrounds = 100, .eta = 0.03,
+                       .max_depth = c(2,4,6,8,10,12), .subsample = c(0.5, 0.75, 1), 
+                       .colsample_bytree = c(0.4, 0.6, 0.8, 1),
+                       .gamma = 0, .min_child_weight = 1)
+
+train1_sample1$Default <- factor(train1_sample1$Default)
+levels(train1_sample1$Default) <- c("Paid", "Default")
+
+Xgradboost.fit <- train(Default ~ .,
+        data = train1_sample1,preProc = steps, method = "xgbTree",
+        trControl = con, tuneGrid = hyperParameters,
+        metric = "ROC", nthread = 4,
+        na.action = na.pass
+    )
+```
+
+#Prediction on Train set
+
+```{r}
+train_out <- data.frame(true_label = train1_sample1$Default)
+train_out$predicted_label <- predict(Xgradboost.fit, train1_sample1, type = "prob")[,"Default"]
+```
+
+#Prediction on Test set
+
+```{r, fig.width=9, fig.height=6}
+test_out <- data.frame(true_label = test1_sample1$Default)
+test_out$predicted_label <- predict(Xgradboost.fit, test1_sample1, type = "prob")[,"Default"]
+```
+
+```{r}
+# ROCRpred<-prediction(test$LoanStatus,train$LoanStatus)
+# plot(performance(ROCRpred,'tpr','fpr'))
+```
+
+#ROC plot for training set
+
+```{r, fig.width=9, fig.height=6}
+rocCurve_xgb1 = roc(response = train_out$true_label,
+                   predictor = train_out$predicted_label)
+
+auc_curve1 = auc(rocCurve_xgb1)
+
+png('XGradBoost_train_roc.png')
+plot(rocCurve_xgb1, legacy.axes = TRUE, print.auc = TRUE, col="black", main="ROC- Extreme Gradient Boosting - Training set")
+dev.off()
+```
+
+#ROC plot for test set
+
+```{r}
+rocCurve_xgb2 = roc(response = test_out$true_label,
+                   predictor = test_out$predicted_label)
+
+auc_curve2 = auc(rocCurve_xgb2)
+
+png('XGradBoost_test_roc.png')
+plot(rocCurve_xgb2, legacy.axes = TRUE, print.auc = TRUE, col="black", main="ROC- Extreme Gradient Boosting - Test set")
+dev.off()
+```
+
