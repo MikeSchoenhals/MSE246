@@ -1,0 +1,381 @@
+---
+title: "random Forest"
+author: "Zheng Wu"
+date: "March 4, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r}
+library(dplyr)
+library(ROCR)
+library(randomForest)
+library(ranger)
+setwd("~/Downloads/")
+alldata <- read.csv("allData.csv")
+```
+
+
+```{r}
+alldata <- alldata %>% mutate(DefaultPercentage = GrossChargeOffAmount/GrossApproval)
+#summary(alldata %>% filter(DefaultPercentage > 0))
+# sum(alldata$DefaultPercentage > 0) 51223
+# sum(alldata$DefaultPercentage > 1) 1503
+alldata$ApprovalDate <- as.POSIXct(alldata$ApprovalDate)
+# alldata <- alldata %>% filter(alldata$DefaultPercentage <= 1)
+train <- alldata$ApprovalDate < '2004-01-01'
+modelingdata <- alldata %>% select(-c(MortgageID, ChargeOffDate, GrossChargeOffAmount, ApprovalDate, Start_Date, End_Date))
+lm.fit <- lm(DefaultPercentage ~ ., modelingdata)
+summary(lm.fit)
+```
+
+```{r}
+library(dplyr)
+library(ROCR)
+library(randomForest)
+library(ranger)
+library(ggplot2)
+setwd("~/Downloads/")
+alldata1 <- read.csv("allData.csv", na.strings = "")
+alldata1$ApprovalDate <- as.POSIXct(alldata1$ApprovalDate, format = "%m/%d/%Y")
+train <- alldata1$ApprovalDate < '2004-01-01'
+test <- alldata1$ApprovalDate >= '2004-01-01'
+modelingdata <- alldata1 %>% select(-c(MortgageID, ChargeOffDate, GrossChargeOffAmount, ApprovalDate, Start_Date, End_Date, BorrZip, CDC_Zip))
+
+colnames(modelingdata)[colSums(is.na(modelingdata)) > 0]
+
+modelingdata$BorrState <- as.character(modelingdata$BorrState)
+modelingdata$BorrState[!modelingdata$BorrState %in% c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC", "PR") & !is.na(modelingdata$BorrState)] <- "Other States"
+modelingdata$BorrState <- as.factor(modelingdata$BorrState)
+
+modelingdata$CDC_State <- as.character(modelingdata$CDC_State)
+modelingdata$CDC_State[!modelingdata$CDC_State %in% c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC") & !is.na(modelingdata$CDC_State)] <- "Other States"
+modelingdata$CDC_State[is.na(modelingdata$CDC_State)] <- "Missing States"
+modelingdata$CDC_State <- as.factor(modelingdata$CDC_State)
+
+
+modelingdata$ThirdPartyLender_State <- as.character(modelingdata$ThirdPartyLender_State)
+modelingdata$ThirdPartyLender_State[!modelingdata$ThirdPartyLender_State %in% c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC") & !is.na(modelingdata$ThirdPartyLender_State)] <- "Other States"
+modelingdata$ThirdPartyLender_State[is.na(modelingdata$ThirdPartyLender_State)] <- "Missing States"
+modelingdata$ThirdPartyLender_State <- as.factor(modelingdata$ThirdPartyLender_State)
+
+modelingdata$ThirdPartyDollars[is.na(modelingdata$ThirdPartyDollars)] <- 0
+
+modelingdata$ProjectState <- as.character(modelingdata$ProjectState)
+modelingdata$ProjectState[!modelingdata$ProjectState %in% c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC") & !is.na(modelingdata$ProjectState)] <- "Other States"
+modelingdata$ProjectState[is.na(modelingdata$ProjectState)] <- "Missing States"
+modelingdata$ProjectState <- as.factor(modelingdata$ProjectState)
+
+
+modelingdata$BusinessType <- as.character(modelingdata$BusinessType)
+modelingdata$BusinessType[is.na(modelingdata$BusinessType)] <- "Missing"
+modelingdata$BusinessType <- as.factor(modelingdata$BusinessType)
+
+modelingdata$MortgageCatTerm <- as.factor(modelingdata$MortgageCatTerm)
+
+modelingdata$NIACLargesBusinessSector <- as.character(modelingdata$NIACLargesBusinessSector)
+modelingdata$NIACLargesBusinessSector[is.na(modelingdata$NIACLargesBusinessSector)] <- "Missing"
+modelingdata$NIACLargesBusinessSector <- as.factor(modelingdata$NIACLargesBusinessSector)
+
+modelingdata$NIACSubsector <- as.character(modelingdata$NIACSubsector)
+modelingdata$NIACSubsector[is.na(modelingdata$NIACSubsector)] <- "Missing"
+modelingdata$NIACSubsector <- as.factor(modelingdata$NIACSubsector)
+
+modelingdata$NIACIndustryGroup <- as.character(modelingdata$NIACIndustryGroup)
+modelingdata$NIACIndustryGroup[is.na(modelingdata$NIACIndustryGroup)] <- "Missing"
+modelingdata$NIACIndustryGroup <- as.factor(modelingdata$NIACIndustryGroup)
+
+
+modelingdata$NAICSIndustries <- as.character(modelingdata$NAICSIndustries)
+modelingdata$NAICSIndustries[is.na(modelingdata$NAICSIndustries)] <- "Missing"
+modelingdata$NAICSIndustries <- as.factor(modelingdata$NAICSIndustries)
+
+modelingdata$NAICSNationalIndustries <- as.character(modelingdata$NAICSNationalIndustries)
+modelingdata$NAICSNationalIndustries[is.na(modelingdata$NAICSNationalIndustries)] <- "Missing"
+modelingdata$NAICSNationalIndustries <- as.factor(modelingdata$NAICSNationalIndustries)
+
+modelingdata$Missing_ThirdPartyDollars <- as.factor(modelingdata$Missing_ThirdPartyDollars)
+
+modelingdata$MortgageAge <- as.factor(modelingdata$MortgageAge)
+
+modelingdata$Missing_Unemp_Rate <- as.factor(modelingdata$Missing_Unemp_Rate)
+
+modelingdata$Default <- as.factor(modelingdata$Default)
+
+
+colnames(modelingdata)[colSums(is.na(modelingdata)) > 0]
+
+set.seed(71)
+
+rf.fit = ranger(Default ~ ., data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$variable.importance
+
+
+library(ROCR)
+
+p_train <- rf.fit$predictions
+pr <- prediction(p_train[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf@x.values[[1]], prf@y.values[[1]])
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]]
+
+
+p_test <- predict(rf.fit, modelingdata[test,], type = 'response')
+pr <- prediction(p_test[1]$predictions[,2], modelingdata[test,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+plot(prf@x.values[[1]], prf@y.values[[1]])
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]]
+
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 1, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004455876
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.78527
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 2, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004448141
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.8103058
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 3, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004468813
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.8013665
+
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 4, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004489187
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7873696
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 5, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004506169
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7836426
+
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 6, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004514365
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7760719
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 7, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004522239
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7701341
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 8, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004525394
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7690109
+
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 9, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004531001
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7633061
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 10, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.00453738
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7596033
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 11, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004542362
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7618648
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 12, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004545371
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7594891
+
+rf.fit = ranger(Default ~ ., num.trees = 500, mtry = 13, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004552797
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7566084
+
+
+rf.fit = ranger(Default ~ ., num.trees = 1000, mtry = 1, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.00445499
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7886579
+
+rf.fit = ranger(Default ~ ., num.trees = 1000, mtry = 2, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004444616
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.81234
+
+rf.fit = ranger(Default ~ ., num.trees = 1000, mtry = 3, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004464577
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.8065891
+
+rf.fit = ranger(Default ~ ., num.trees = 1000, mtry = 4, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004484595
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.7952558
+
+rf.fit = ranger(Default ~ ., num.trees = 1000, mtry = 5, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.00449798
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.7919867
+
+rf.fit = ranger(Default ~ ., num.trees = 1000, mtry = 6, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004506845
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.7858561
+
+
+rf.fit = ranger(Default ~ ., num.trees = 1500, mtry = 1, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004455601
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.7876639
+
+rf.fit = ranger(Default ~ ., num.trees = 1500, mtry = 2, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.00444445
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.814781
+
+rf.fit = ranger(Default ~ ., num.trees = 1500, mtry = 3, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004462932
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.8095235
+
+rf.fit = ranger(Default ~ ., num.trees = 1500, mtry = 4, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004482732
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.801145
+
+rf.fit = ranger(Default ~ ., num.trees = 2000, mtry = 1, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004454731
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.7899728
+
+rf.fit = ranger(Default ~ ., num.trees = 2000, mtry = 2, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004444126
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.8147639
+
+rf.fit = ranger(Default ~ ., num.trees = 2000, mtry = 3, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004461563
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.8102883
+
+rf.fit = ranger(Default ~ ., num.trees = 2500, mtry = 1, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004455273
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.7884936
+
+rf.fit = ranger(Default ~ ., num.trees = 2500, mtry = 2, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004443472
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.8176415
+
+rf.fit = ranger(Default ~ ., num.trees = 2500, mtry = 3, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004461222
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.8113341
+
+rf.fit = ranger(Default ~ ., num.trees = 5000, mtry = 2, seed = 0, data = modelingdata[train,], importance = "impurity", probability = TRUE)
+rf.fit$prediction.error #0.004443811
+pr <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] #  0.8177657
+
+p_test <- predict(rf.fit, modelingdata[test,], type = 'response')
+pr <- prediction(p_test[1]$predictions[,2], modelingdata[test,]$Default)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+ROC.test <- data.frame(fpr = prf@x.values[[1]], tpr = prf@y.values[[1]], data_set="test")
+
+
+
+
+pr_train <- prediction(rf.fit$predictions[,2], modelingdata[train,]$Default)
+prf_train <- performance(pr_train, measure = "tpr", x.measure = "fpr")
+
+ROC.train <- data.frame(fpr = prf_train@x.values[[1]], tpr = prf_train@y.values[[1]], data_set="train")
+
+
+
+ROCs <- rbind(ROC.train, ROC.test)
+ggplot(ROCs, aes(x=fpr, y=tpr, color=data_set)) + geom_line() + labs(x = "False Positive Rate", y = "True Positive Rate", title = "ROC for Random Forest")
+
+
+df %>% 
+  ggplot(aes(x = fpr, y = tpr)) +
+  geom_line()
+plot(prf@x.values[[1]], prf@y.values[[1]], xlab = "False Positive Rate", ylab = "True Positive Rate", main = "Test Set ROC")
+auc <- performance(pr, measure = 'auc')
+auc@y.values[[1]] # 0.7818999
+
+sort(rf.fit$variable.importance, decreasing = TRUE)
+
+
+```
