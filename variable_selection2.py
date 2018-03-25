@@ -23,7 +23,10 @@ from sklearn.svm import l1_min_c
 from sklearn.model_selection import cross_val_score, StratifiedShuffleSplit
 from sklearn import metrics
 
-
+# REG_PARAM = .058
+# REG_PARAM = .0268
+REG_PARAM = .0268
+VAR_THRESH = .00001
 pd.options.display.max_rows = 30
 csvPath = "alldata.csv"
 
@@ -37,10 +40,10 @@ len(sss.index)
 # Categorical Variables
 cat_attribs = ['BorrState','CDC_State','ThirdPartyLender_State',\
 'subpgmdesc','ProjectState','BusinessType','MortgageCatTerm','NIACLargesBusinessSector','NIACSubsector','NIACIndustryGroup',\
-'NAICSIndustries','NAICSNationalIndustries','Missing_ThirdPartyDollars']#,'BorrZip']
+'NAICSIndustries','NAICSNationalIndustries','Missing_ThirdPartyDollars','Missing_Unemp_Rate']#,'BorrZip']
 # Numerical Variables
 num_attribs = ['GrossApproval','TermInMonths','ThirdPartyDollars',\
-'MortgageAge','SPFactor','SPAnnualReturn','hpiFactor','unemp_rate']
+'MortgageAge','SPFactor','hpiFactor','unemp_rate'] # ,'SPAnnualReturn']
 
 
 
@@ -62,7 +65,7 @@ class CategoricalSelector(BaseEstimator, TransformerMixin):
         for x in cat_attribs:
             self.indic_prefix.append('Indic_' + x)
     def fit(self, df):
-        s = pd.get_dummies(df[self.cat_attribs].fillna('NaN'),prefix_sep='_',prefix=self.indic_prefix,columns=self.cat_attribs,sparse=True)
+        s = pd.get_dummies(df[self.cat_attribs].fillna('NaN'),prefix_sep='_',drop_first=True, prefix=self.indic_prefix,columns=self.cat_attribs,sparse=True)
         self.final_columns_index = s.columns.copy()
         self.final_columns_set = set(s.columns)
         self.final_columns_list = [x for x in s.columns]
@@ -88,14 +91,6 @@ class DataFrameSelector(BaseEstimator, TransformerMixin):
     def transform(self, X):
         return X[self.attribute_names].values
 
-class DataFrameSelector2(BaseEstimator, TransformerMixin):
-    def __init__(self, attribute_names):
-        self.attribute_names = attribute_names
-    def fit(self, X, y=None):
-        return self
-    def transform(self, X):
-        X = X[self.attribute_names]
-        return X.replace(np.nan,'NaNN').values
 
 num_pipeline = Pipeline([('selector', DataFrameSelector(num_attribs)),('imputer', Imputer(strategy="mean")),('std_scaler', StandardScaler())])
 # cat_pipeline = Pipeline([('selector', DataFrameSelector2(cat_attribs)),('cat_encoder', CategoricalEncoder(encoding="onehot"))])
@@ -114,7 +109,8 @@ y = y.flatten()
 
 
 # remove categorical variables with low variance
-selector_variance = VarianceThreshold(threshold=.0025)
+selector_variance = VarianceThreshold(threshold=VAR_THRESH)
+# selector_variance = VarianceThreshold(threshold=.0025)
 selector_variance.fit(allData)
 c = selector_variance.get_support(indices=False)
 d = selector_variance.get_support(indices=True)
@@ -126,11 +122,11 @@ featureNumToName2 = dict([(i,x[1]) for i, x in enumerate(featureItemize)])
 allDataVarThreshold = selector_variance.transform(allData)
 
 # Perform l1 feature selection
-clf_l = linear_model.LogisticRegression(C=.07, penalty='l1', tol=1e-6,max_iter=500)
-std_scaler = StandardScaler()
-allDataScaled = std_scaler.fit_transform(allDataVarThreshold.toarray())
+clf_l = linear_model.LogisticRegression(C=REG_PARAM, penalty='l1', tol=1e-6,max_iter=500)
+# std_scaler = StandardScaler()
+# allDataScaled = std_scaler.fit_transform(allDataVarThreshold.toarray())
 
-clf_l.fit(allDataScaled,y)
+clf_l.fit(allDataVarThreshold,y)
 
 selector_l1 = SelectFromModel(clf_l,prefit=True)
 c = selector_l1.get_support(indices=False)
@@ -140,7 +136,7 @@ featureItemize2 = featureNumToName2.items()
 featureItemize2 = [x for x,z in zip(featureItemize2,c) if (z == 1)]
 featureNumToName3 = dict([(i,x[1]) for i, x in enumerate(featureItemize2)])
 
-allDataL1 = selector_l1.transform(allDataScaled)
+allDataL1 = selector_l1.transform(allDataVarThreshold)
 
 # Get rid of noise variables
 # selector_kbest = SelectKBest(f_classif, k=140)
@@ -176,7 +172,7 @@ allDataL1 = selector_l1.transform(allDataScaled)
 #     axReshape[i].set_title('Default rate vs ' + str(quant))
 #
 # plt.subplots_adjust(hspace=.5)
-# plt.savefig('foo.png')
+# plt.savefig('num_data_summary.png')
 # plt.show()
 
 #Process Test Data
@@ -188,34 +184,34 @@ data_test_numSparse = coo_matrix(test_prepared_num)
 all_test_data = hstack([test_prepared_num,test_cat_data])
 
 all_test_data_var = selector_variance.transform(all_test_data)
-all_test_data_scaled = std_scaler.transform(all_test_data_var.toarray())
-all_test_data_l1 = selector_l1.transform(all_test_data_scaled)
+# all_test_data_scaled = std_scaler.transform(all_test_data_var.toarray())
+all_test_data_l1 = selector_l1.transform(all_test_data_var)
 # all_test_data_kbest = selector_kbest.transform(all_test_data_var)
 
 # Get ROC curve - this is without selection using L1 loss
-clf = linear_model.LogisticRegression(C=.07, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
-clf.fit(allDataL1,y)
+clf = linear_model.LogisticRegression(C=REG_PARAM, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
+clf.fit(allData,y)
 
-clf2 = linear_model.LogisticRegression(C=1e42, penalty='l2', tol=1e-6,max_iter=500)
+clf2 = linear_model.LogisticRegression(C=1e42, penalty='l2', tol=1e-6,max_iter=500,verbose=1)
 clf2.fit(allData,y)
 
 # predict training data
-y_predict = clf.predict_proba(allDataL1)
+y_predict = clf.predict_proba(allData)
 yy = y_predict[:,1]
 fpr, tpr, thresholds = metrics.roc_curve(y, yy, pos_label=1)
 fig, ax = plt.subplots()
 score_training = metrics.roc_auc_score(y, yy)
-plt.plot(fpr,tpr,color='darkorange',label='l1 selection training. AUC: ' + '{0:.2f}'.format(score_training))
+plt.plot(fpr,tpr,color='darkorange',label='Training-L1 Logistic Reg. AUC: ' + '{0:.2f}'.format(score_training))
 plt.ylabel('True Positive Rate')
 plt.xlabel('False Positive Rate')
 
 
 # predict test data
-y_test_predict = clf.predict_proba(all_test_data_l1)
+y_test_predict = clf.predict_proba(all_test_data)
 yy_test = y_test_predict[:,1]
 fpr_test, tpr_test, thresholds_test = metrics.roc_curve(y_test, yy_test, pos_label=1)
 score_test = metrics.roc_auc_score(y_test, yy_test)
-plt.plot(fpr_test,tpr_test,color='blue',label='l1 selection test. AUC: ' + '{0:.2f}'.format(score_test))
+plt.plot(fpr_test,tpr_test,color='blue',label='Test-L1 Logistic Reg. AUC: ' + '{0:.2f}'.format(score_test))
 
 # see effects of our variable selection process
 
@@ -224,35 +220,38 @@ y_predict = clf2.predict_proba(allData)
 yy = y_predict[:,1]
 fpr2, tpr2, thresholds2 = metrics.roc_curve(y, yy, pos_label=1)
 score_training = metrics.roc_auc_score(y, yy)
-plt.plot(fpr2,tpr2,color='yellow',label='training-nothing. AUC: ' + '{0:.2f}'.format(score_training))
+plt.plot(fpr2,tpr2,color='yellow',label='Training-Raw Data: AUC: ' + '{0:.2f}'.format(score_training))
 
 # predict test data
 y_test_predict = clf2.predict_proba(all_test_data)
 yy_test = y_test_predict[:,1]
 fpr_test2, tpr_test2, thresholds_test2 = metrics.roc_curve(y_test, yy_test, pos_label=1)
 score_test = metrics.roc_auc_score(y_test, yy_test)
-plt.plot(fpr_test2,tpr_test2,color='green',label='test-nothing. AUC: ' + '{0:.2f}'.format(score_test))
+plt.plot(fpr_test2,tpr_test2,color='green',label='Test-Raw Data. AUC: ' + '{0:.2f}'.format(score_test))
 
 
 
 legend = ax.legend(loc='best')
-plt.title('ROC for simple logistic Model on training set')
-plt.savefig('foo.png')
+plt.title('ROC-Logistic Model')
+plt.savefig('fooblah2.png')
 plt.show()
 
 # Get Important Variables
 lossLambda = []
-for i in range(allDataL1.shape[-1]):
+for i in range(allData.shape[-1]):
     print(i)
-    selector = [x for x in range(allDataL1.shape[-1]) if x != i]
-    clf_var = linear_model.LogisticRegression(C=.07, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
-    all_data_l1_mod = allDataL1[:,selector]
+    if featureNumToName[i] not in featureNumToName3.values():
+        continue
+    print(featureNumToName[i])
+    selector = [x for x in range(allData.shape[-1]) if x != i]
+    clf_var = linear_model.LogisticRegression(C=REG_PARAM, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
+    all_data_l1_mod = allData.toarray()[:,selector]
     clf_var.fit(all_data_l1_mod,y)
-    test_data_l1_mod = all_test_data_l1[:,selector]
+    test_data_l1_mod = all_test_data.toarray()[:,selector]
     y_test_predict = clf_var.predict_proba(test_data_l1_mod)
     yy_test = y_test_predict[:,1]
     score_test = metrics.roc_auc_score(y_test, yy_test)
-    lossLambda.append((i,featureNumToName3[i],score_test))
+    lossLambda.append((i,featureNumToName[i],score_test))
     temp = pd.DataFrame(lossLambda)
     temp.to_csv('SelectionRank.csv',index=False,header=False)
 
@@ -266,54 +265,67 @@ for i in range(allDataL1.shape[-1]):
 
 
 # selection using l1_loss
-# cs = l1_min_c(allData, y, loss='log') * np.logspace(1, 5,20)
 # clf_l = linear_model.LogisticRegression(C=.07, penalty='l1', tol=1e-6,max_iter=500)
-# lossLambda = []
-#
-# split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-# for train_index, test_index in split.split(sss, sss["MortgageAge"]):
-#     strat_train_set = sss.iloc[train_index]
-#     strat_test_set = sss.iloc[test_index]
-#     strat_y_train = y[train_index]
-#     strat_y_test = y[test_index]
-#
-# # Prepare train set
-# data_prepared_train = num_pipeline.fit_transform(strat_train_set)
-# cat_encoder = CategoricalSelector(num_attribs,cat_attribs)
-# featureNumToName = cat_encoder.fit(strat_train_set)
-# catArray = cat_encoder.transform(strat_train_set)
-# data_prepared_numSparse = coo_matrix(data_prepared_train)
-# allData_train = hstack([data_prepared_numSparse,catArray])
-#
-# # Remove Low variance categorical variables
-# selector_variance = VarianceThreshold(threshold=.0025)
-# selector_variance.fit(allData_train)
-# c = selector_variance.get_support(indices=False)
-# d = selector_variance.get_support(indices=True)
-#
-# featureItemize = featureNumToName.items()
-# featureItemize = [x for x,z in zip(featureItemize,c) if (z == 1)]
-# featureNumToName2 = dict([(i,x[1]) for i, x in enumerate(featureItemize)])
-#
-# allDataVarThreshold_train = selector_variance.transform(allData_train)
-# std_scaler = StandardScaler()
-# std_scaler.fit(allDataVarThreshold_train.toarray())
-# allDataScaled_train = std_scaler.transform(allDataVarThreshold_train.toarray())
-#
-# # fit test data
-# test_prepared_num = num_pipeline.transform(strat_test_set)
-# test_cat_data = cat_encoder.transform(strat_test_set)
-# data_test_numSparse = coo_matrix(test_prepared_num)
-# all_test_data = hstack([test_prepared_num,test_cat_data])
-#
-# all_test_data_var = selector_variance.transform(all_test_data)
-# all_test_data_scaled = std_scaler.transform(all_test_data_var.toarray())
-#
-# clf_l.fit(allDataScaled_train,strat_y_train)
-# strat_y_test_proba = clf_l.predict_proba(all_test_data_scaled)
-#
-#
-# print(lossLambda)
-# print('loss Lambda')
-# for x in lossLambda:
-#     print(x)
+lossLambda = []
+
+split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+for train_index, test_index in split.split(sss, sss["MortgageAge"]):
+    strat_train_set = sss.iloc[train_index]
+    strat_test_set = sss.iloc[test_index]
+    strat_y_train = y[train_index]
+    strat_y_test = y[test_index]
+
+# Prepare train set
+data_prepared_train = num_pipeline.fit_transform(strat_train_set)
+cat_encoder = CategoricalSelector(num_attribs,cat_attribs)
+featureNumToName = cat_encoder.fit(strat_train_set)
+catArray = cat_encoder.transform(strat_train_set)
+data_prepared_numSparse = coo_matrix(data_prepared_train)
+allData_train = hstack([data_prepared_numSparse,catArray])
+
+# Remove Low variance categorical variables
+selector_variance = VarianceThreshold(threshold=VAR_THRESH)
+selector_variance.fit(allData_train)
+c = selector_variance.get_support(indices=False)
+d = selector_variance.get_support(indices=True)
+
+featureItemize = featureNumToName.items()
+featureItemize = [x for x,z in zip(featureItemize,c) if (z == 1)]
+featureNumToName2 = dict([(i,x[1]) for i, x in enumerate(featureItemize)])
+
+allDataVarThreshold_train = selector_variance.transform(allData_train)
+std_scaler = StandardScaler()
+std_scaler.fit(allDataVarThreshold_train.toarray())
+allDataScaled_train = std_scaler.transform(allDataVarThreshold_train.toarray())
+
+# fit test data
+test_prepared_num = num_pipeline.transform(strat_test_set)
+test_cat_data = cat_encoder.transform(strat_test_set)
+data_test_numSparse = coo_matrix(test_prepared_num)
+all_test_data = hstack([test_prepared_num,test_cat_data])
+
+all_test_data_var = selector_variance.transform(all_test_data)
+all_test_data_scaled = std_scaler.transform(all_test_data_var.toarray())
+
+lossLambda = []
+cs = np.linspace(.01, .4,40)
+for i in cs:
+    print(i)
+    clf_var = linear_model.LogisticRegression(C=i, penalty='l1', tol=1e-6,max_iter=500,verbose=1)
+    clf_var.fit(allData_train,strat_y_train)
+    y_test_predict = clf_var.predict_proba(all_test_data)
+    yy_test = y_test_predict[:,1]
+    score_test = metrics.log_loss(strat_y_test, yy_test)
+    lossLambda.append((i,score_test))
+    temp = pd.DataFrame(lossLambda)
+    temp.to_csv('logloss.csv',index=False,header=False)
+
+
+clf_l.fit(allDataScaled_train,strat_y_train)
+strat_y_test_proba = clf_l.predict_proba(all_test_data_scaled)
+
+
+print(lossLambda)
+print('loss Lambda')
+for x in lossLambda:
+    print(x)
